@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package pb_cheatsheet;
+
+service PbCheatsheet {
+  rpc FocusedWindow(FocusedWindowInfo) returns (Empty) {}
+  rpc GetScreenInfo(Empty) returns (ScreenInfo) {}
+  rpc GetCheatsheetsInfo(Empty) returns (CheatsheetsInfo) {}
+  rpc UploadCheatsheet(UploadCheatsheetRequest) returns (Empty) {}
+  rpc RemoveCheatsheet(RemoveCheatsheetRequest) returns (Empty) {}
+  rpc AddCheatsheetTags(AddCheatsheetTagsRequest) returns (Empty) {}
+  rpc RemoveCheatsheetTags(RemoveCheatsheetTagsRequest) returns (Empty) {}
+  rpc AddWmClassTags(AddWmClassTagsRequest) returns (Empty) {}
+  rpc RemoveWmClassTags(RemoveWmClassTagsRequest) returns (Empty) {}
+}
+
+enum Result {
+  Success = 0;
+  Failure = 1;
+}
+enum ImageFormat {
+  Gray8 = 0;
+}
+enum ByteOrder {
+  LE = 0;
+  BE = 1;
+}
+// In clockwise direction
+enum ScreenOrientation {
+  Portrait0Deg = 0;
+  Landscape90Deg = 1;
+  Portrait180Deg = 2;
+  Landscape270Deg = 3;
+}
+
+message Empty {}
+message StringResult {
+  Result result = 1;
+  string message = 2;
+}
+message Tags { repeated string tags = 1; }
+message FocusedWindowInfo {
+  string title = 1;
+  string wm_class = 2;
+  string wm_class_instance = 3;
+  uint64 pid = 4;
+  bool focus = 5;
+}
+message ScreenInfo {
+  uint32 width = 1;
+  uint32 height = 2;
+  ScreenOrientation orientation = 3;
+}
+message CheatsheetTags {
+  string name = 1;
+  Tags tags = 2;
+}
+message WmClassTags {
+  string wm_class = 1;
+  Tags tags = 2;
+}
+message CheatsheetsInfo { 
+  repeated CheatsheetTags cheatsheets = 1; 
+  repeated WmClassTags wm_classes = 2; 
+}
+message UploadCheatsheetRequest {
+  ImageFormat format = 1;
+  ByteOrder order = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  string name = 5;
+  Tags tags = 6;
+  bytes image_data = 31;
+}
+message RemoveCheatsheetRequest { string name = 1; }
+message AddCheatsheetTagsRequest {
+  string name = 1;
+  Tags tags = 2;
+}
+message RemoveCheatsheetTagsRequest {
+  string name = 1;
+  Tags tags = 2;
+}
+message AddWmClassTagsRequest {
+  string wm_class = 1;
+  Tags tags = 2;
+}
+message RemoveWmClassTagsRequest {
+  string wm_class = 1;
+  Tags tags = 2;
+}

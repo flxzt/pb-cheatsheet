@@ -1,0 +1,33 @@
+[package]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+name = "pb-cheatsheet-client"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[features]
+sdk-5-19 = ["inkview/sdk-5-19"]
+sdk-6-5 = ["inkview/sdk-6-5"]
+
+[dependencies]
+pb-cheatsheet-com = { workspace = true }
+
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bincode = { workspace = true }
+embedded-graphics = { workspace = true }
+inkview = { workspace = true }
+inkview-eg = { workspace = true }
+itertools = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = [
+    "full",
+] } # TODO: only activate needed features
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+zbus = { workspace = true }

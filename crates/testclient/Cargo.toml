@@ -1,0 +1,19 @@
+[package]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+name = "pb-cheatsheet-testclient"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+pb-cheatsheet-com = { workspace = true }
+
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = [
+    "full",
+] } # TODO: only activate needed features
+tokio-util = { workspace = true }
+zbus = { workspace = true }
