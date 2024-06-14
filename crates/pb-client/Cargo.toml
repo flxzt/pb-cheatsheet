@@ -28,6 +28,7 @@ tokio = { workspace = true, features = [
 ] } # TODO: only activate needed features
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+const_format = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 zbus = { workspace = true }

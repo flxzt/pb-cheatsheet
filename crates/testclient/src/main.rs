@@ -1,6 +1,10 @@
 use pb_cheatsheet_com::grpc::PbCheatsheetServerImpl;
-use pb_cheatsheet_com::{CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo};
+use pb_cheatsheet_com::{
+    CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo, PB_GRPC_PORT,
+};
 use std::collections::HashSet;
+
+const PB_GRPC_ADDR: &str = const_format::formatcp!("0.0.0.0:{PB_GRPC_PORT}");
 
 struct GrpcServer {}
 
@@ -37,6 +41,16 @@ impl PbCheatsheetServerImpl for GrpcServer {
         println!("{tags:#?}");
     }
 
+    async fn handle_upload_screenshot(&self, screenshot: CheatsheetImage, name: String) {
+        println!("Received upload screenshot");
+        println!("{screenshot:#?}");
+        println!("{name:#?}");
+    }
+
+    async fn handle_clear_screenshot(&self) {
+        println!("Received clear screenshot");
+    }
+
     async fn handle_remove_cheatsheet(&self, name: String) {
         println!("Received remove cheatsheet");
         println!("{name:#?}");
@@ -69,7 +83,6 @@ impl PbCheatsheetServerImpl for GrpcServer {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    const SERVER_ADDR: &str = "0.0.0.0:51151";
     let quit_token = tokio_util::sync::CancellationToken::new();
 
     // Ctrl-C cancel task
@@ -81,9 +94,9 @@ async fn main() -> anyhow::Result<()> {
         quit_token_c.cancel();
     });
 
-    println!("Starting GRPC server with listening address: '{SERVER_ADDR}'");
+    println!("Starting GRPC server with listening address: '{PB_GRPC_ADDR}'");
     tokio::select! {
-        _ = pb_cheatsheet_com::grpc::start_server(GrpcServer {}, SERVER_ADDR.parse().unwrap()) => {}
+        _ = pb_cheatsheet_com::grpc::start_server(GrpcServer {}, PB_GRPC_ADDR.parse().unwrap()) => {}
         _ = quit_token.cancelled() => {}
     }
 

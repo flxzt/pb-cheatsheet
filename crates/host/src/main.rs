@@ -3,6 +3,7 @@ pub(crate) mod imageprocessing;
 
 use anyhow::Context;
 use clap::Parser;
+use imageprocessing::Rotate;
 use pb_cheatsheet_com::grpc::PbCheatsheetClientStruct;
 use pb_cheatsheet_com::FocusedWindowInfo;
 use std::collections::HashSet;
@@ -17,8 +18,8 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug, clap::Parser)]
 struct Cli {
     /// The GRPC server address of the client application.
-    #[arg(long, env)]
-    server_addr: String,
+    #[arg(short = 'a', long, env)]
+    pb_grpc_addr: String,
     #[command(subcommand)]
     cmd: Command,
 }
@@ -28,9 +29,9 @@ enum Command {
     /// Continuously report focused window info to the client.{n}
     /// Intended to be run as a service.
     ReportFocusedWindow,
-    // Get device screen info.
+    /// Get device screen info.
     GetScreenInfo,
-    // Get cheatsheets info.
+    /// Get cheatsheets info.
     GetCheatsheetsInfo,
     /// Upload a new chaetsheet that gets displayed when the added tags match the tags{n}
     /// that are added to the wm class of the reported window.{n}
@@ -50,6 +51,17 @@ enum Command {
         /// The cheatsheet name.
         name: String,
     },
+    /// Take a screenshot and upload it to the device for transient display.
+    Screenshot {
+        /// An optional screenshot name.
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Whether the image colors should be inverted.
+        #[arg(short, long)]
+        invert: bool,
+    },
+    /// Clear the screenshot.
+    ClearScreenshot,
     /// Add cheatsheet tags.
     AddCheatsheetTags {
         /// The cheatsheet name.
@@ -96,10 +108,10 @@ async fn main() -> anyhow::Result<()> {
     let dbus_connection = zbus::Connection::session().await?;
     println!(
         "Connecting to GRPC server with address: '{}'",
-        cli.server_addr
+        cli.pb_grpc_addr
     );
     let grpc_client =
-        pb_cheatsheet_com::grpc::PbCheatsheetClientStruct::new(&cli.server_addr).await?;
+        pb_cheatsheet_com::grpc::PbCheatsheetClientStruct::new(&cli.pb_grpc_addr).await?;
 
     // Ctrl-C quit task
     let quit_token_c = quit_token.clone();
@@ -133,6 +145,16 @@ async fn main() -> anyhow::Result<()> {
         Command::RemoveCheatsheet { name } => {
             run_remove_cheatsheet(grpc_client, quit_token, name).await?;
         }
+        Command::Screenshot { name, invert } => {
+            run_upload_screenshot(
+                grpc_client,
+                quit_token.clone(),
+                name.unwrap_or_default(),
+                invert,
+            )
+            .await?;
+        }
+        Command::ClearScreenshot => {}
         Command::AddCheatsheetTags { name, tags } => {
             run_add_cheatsheet_tags(grpc_client, quit_token, name, tags.into_iter().collect())
                 .await?;
@@ -299,7 +321,7 @@ async fn upload_cheatsheet_image(
     let screen_info = grpc_client.get_screen_info().await?;
     tracing::debug!("Preparing image for device with fetched screen info: '{screen_info:#?}'");
     let image = tokio::select! {
-        image = imageprocessing::load_prepare_image(image, screen_info.width, screen_info.height) => {
+        image = imageprocessing::load_prepare_image(image, screen_info.width, screen_info.height, Rotate::Rotate0Deg, false) => {
             image.context("Load and prepare image from file")?
         },
         _ = quit_token.cancelled() => return Ok(())
@@ -322,6 +344,57 @@ async fn run_remove_cheatsheet(
     name: String,
 ) -> anyhow::Result<()> {
     grpc_client.remove_cheatsheet(name).await
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_upload_screenshot(
+    mut grpc_client: PbCheatsheetClientStruct,
+    quit_token: CancellationToken,
+    name: String,
+    invert: bool,
+) -> anyhow::Result<()> {
+    let screenshot_req = ashpd::desktop::screenshot::Screenshot::request()
+        .interactive(true)
+        .modal(true)
+        .send();
+    let screenshot = tokio::select! {
+        response = screenshot_req => {
+            let response = response?.response()?;
+            response.uri().to_file_path().map_err(|e| anyhow::anyhow!("Retrieving file path from returned screenshot URL, Err: {e:?}"))?
+        },
+        _ = quit_token.cancelled() => return Ok(())
+    };
+
+    tracing::debug!("Got screenshot path '{:?}'", screenshot);
+
+    let screen_info = grpc_client.get_screen_info().await?;
+    tracing::debug!("Preparing screenshot for device with fetched screen info: '{screen_info:#?}'");
+    let image = tokio::select! {
+        image = imageprocessing::load_prepare_image(screenshot, screen_info.width, screen_info.height, Rotate::Rotate270Deg, invert) => {
+            image.context("Load and prepare screenshot from file")?
+        },
+        _ = quit_token.cancelled() => return Ok(())
+    };
+    tracing::debug!("Uploading screenshot..");
+    tokio::select! {
+        res = grpc_client.upload_screenshot(image, name) => {
+            res.context("Upload screenshot to client")?
+        }
+        _ = quit_token.cancelled() => return Ok(())
+    }
+    tracing::debug!("Upload finished.");
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_clear_screenshot(
+    mut grpc_client: PbCheatsheetClientStruct,
+    quit_token: CancellationToken,
+) -> anyhow::Result<()> {
+    tokio::select! {
+        res = grpc_client.clear_screenshot() => res,
+        _ = quit_token.cancelled() => return Ok(())
+    }
 }
 
 #[tracing::instrument(skip_all)]

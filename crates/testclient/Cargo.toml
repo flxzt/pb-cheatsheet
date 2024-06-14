@@ -12,6 +12,7 @@ pb-cheatsheet-com = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+const_format = { workspace = true }
 tokio = { workspace = true, features = [
     "full",
 ] } # TODO: only activate needed features

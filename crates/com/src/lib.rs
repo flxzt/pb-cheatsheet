@@ -5,6 +5,8 @@ use grpc::pb_cheatsheet_proto;
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::fmt::Debug;
 
+pub const PB_GRPC_PORT: u16 = 51151;
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
 pub struct FocusedWindowInfo {
     pub title: String,

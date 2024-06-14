@@ -107,6 +107,8 @@ pub trait PbCheatsheetServerImpl: PbCheatsheet + Send + Sync + 'static {
         name: String,
         tags: HashSet<String>,
     );
+    async fn handle_upload_screenshot(&self, screenshot: CheatsheetImage, name: String);
+    async fn handle_clear_screenshot(&self);
     async fn handle_remove_cheatsheet(&self, name: String);
     async fn handle_add_cheatsheet_tags(&self, name: String, tags: HashSet<String>);
     async fn handle_remove_cheatsheet_tags(&self, name: String, tags: HashSet<String>);
@@ -193,6 +195,41 @@ where
     ) -> Result<Response<pb_cheatsheet_proto::Empty>, Status> {
         let req = req.into_inner();
         self.handle_remove_cheatsheet(req.name).await;
+        Ok(Response::new(pb_cheatsheet_proto::Empty {}))
+    }
+
+    async fn upload_screenshot(
+        &self,
+        req: Request<pb_cheatsheet_proto::UploadScreenshotRequest>,
+    ) -> Result<Response<pb_cheatsheet_proto::Empty>, Status> {
+        let req = req.into_inner();
+        let name = req.name;
+        let format = ImageFormat::try_from(req.format)
+            .map_err(|_e| Status::new(Code::Internal, "'ImageFormat' try from received i32"))?;
+        let order = ByteOrder::try_from(req.order)
+            .map_err(|_e| Status::new(Code::Internal, "'ByteOrder' try from received i32"))?;
+        let width = req.width;
+        let height = req.height;
+        let data = req.image_data;
+        self.handle_upload_screenshot(
+            CheatsheetImage {
+                format,
+                order,
+                width,
+                height,
+                data,
+            },
+            name,
+        )
+        .await;
+        Ok(Response::new(pb_cheatsheet_proto::Empty {}))
+    }
+
+    async fn clear_screenshot(
+        &self,
+        _req: Request<pb_cheatsheet_proto::Empty>,
+    ) -> Result<Response<pb_cheatsheet_proto::Empty>, Status> {
+        self.handle_clear_screenshot().await;
         Ok(Response::new(pb_cheatsheet_proto::Empty {}))
     }
 
@@ -357,6 +394,42 @@ impl PbCheatsheetClientStruct {
             .remove_cheatsheet(req)
             .await
             .context("Remove cheatsheet GRPC call")?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub async fn upload_screenshot(
+        &mut self,
+        screenshot: CheatsheetImage,
+        name: String,
+    ) -> anyhow::Result<()> {
+        tracing::debug!("Uploading screenshot\n{screenshot:#?}");
+        let req = Request::new(pb_cheatsheet_proto::UploadScreenshotRequest {
+            format: screenshot.format.try_into()?,
+            order: screenshot.order.try_into()?,
+            width: screenshot.width,
+            height: screenshot.height,
+            name,
+            image_data: screenshot.data,
+        });
+        let _reply = self
+            .client
+            .upload_screenshot(req)
+            .await
+            .context("Uploading screenshot")?;
+        tracing::debug!("Upload finished");
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub async fn clear_screenshot(&mut self) -> anyhow::Result<()> {
+        tracing::debug!("Clear screenshot");
+        let req = Request::new(pb_cheatsheet_proto::Empty {});
+        let _reply = self
+            .client
+            .clear_screenshot(req)
+            .await
+            .context("Clear screenshot GRPC call")?;
         Ok(())
     }
 

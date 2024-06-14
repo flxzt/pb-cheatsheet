@@ -50,6 +50,8 @@ just deploy-host-service <pocketbook-ip>
 ```
 
 It will create a systemd user service with name `pb-cheatsheet-host.service`.
+Additionally the host application `pb-cheatsheet-host` will be installed into `.cargo/bin`,
+which when rust is installed normally should be in your `$PATH`.
 
 Check it's status and optionally it's journal:
 
@@ -67,19 +69,27 @@ it is still possible to control the device through the `pb-cheatsheet-host` appl
 To see available commands, run:
 
 ```bash
-just run-host --help
+pb-cheatsheet-host --help
 ```
 
-For example upload a new cheatsheet with a specific name, with tags associated to it:
+For example:
+
+- Upload a new cheatsheet with a specific name, with tags associated to it:
 
 ```bash
-just run-host --server-addr <pocketbook-ip>:51151 upload-cheatsheet --name <cheatsheet-name> --tags <associated-tags>
+pb-cheatsheet-host -a <pocketbook-ip>:51151 upload-cheatsheet --name <cheatsheet-name> --tags <associated-tags>
 ```
 
-Associate tags to a specific reported WM-Class:
+- Take a screenshot (screenshot tool will open automatically) and upload upload it to the device for display:
 
 ```bash
-just run-host --server-addr <pocketbook-ip>:51151 add-wm-class-tags --wm-class <wm-class> --tags <associated-tags>
+pb-cheatsheet-host -a <pocketbook-ip>:51151 screenshot
+```
+
+- Associate tags to a specific reported WM-Class:
+
+```bash
+pb-cheatsheet-host -a <pocketbook-ip>:51151 add-wm-class-tags --wm-class <wm-class> --tags <associated-tags>
 ```
 
 Whenever the associated tags of a focused window WM-Class match with the associated tags of a cheatsheet,
@@ -93,6 +103,8 @@ it will be one of the cheatsheet pages that can get displayed.
     - **Manual** (`M`) : Browse through all available cheatsheets yourself
     - **Automatic WM-Class** (`A-WMC`) : display cheatsheets depending on their matching associated tags
         with the current reported WM-Class
+    - **Screenshot** (`SCR`) : display the latest screenshot sent to the device.
+        Note: the screenshot image is not persistent across app launches.
 - `Menu Button Short Press` : Toggle stats overlay displaying the current reported info and stats
 
 ### License

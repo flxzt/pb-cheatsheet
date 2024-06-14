@@ -29,7 +29,7 @@ install-host: build-host
 run-host *ARGS: build-host
     RUST_LOG=pb-cheatsheet-host={{rust_loglevel}} RUST_BACKTRACE={{rust_backtrace}} cargo run --profile {{cargo_profile}} -p pb-cheatsheet-host -- {{ARGS}}
 
-deploy-host-service server_addr: install-host
+deploy-host-service pb_grpc_addr: install-host
     #!/usr/bin/env bash
     set -euxo pipefail
 
@@ -43,7 +43,7 @@ deploy-host-service server_addr: install-host
     StartLimitBurst=0
 
     [Service]
-    Environment="SERVER_ADDR={{server_addr}}"
+    Environment="PB_GRPC_ADDR={{pb_grpc_addr}}"
     Environment="RUST_LOG=pb-cheatsheet-host={{rust_loglevel}}"
     ExecStart=%h/.cargo/bin/pb-cheatsheet-host report-focused-window
     Restart=on-failure

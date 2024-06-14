@@ -8,6 +8,8 @@ service PbCheatsheet {
   rpc GetCheatsheetsInfo(Empty) returns (CheatsheetsInfo) {}
   rpc UploadCheatsheet(UploadCheatsheetRequest) returns (Empty) {}
   rpc RemoveCheatsheet(RemoveCheatsheetRequest) returns (Empty) {}
+  rpc UploadScreenshot(UploadScreenshotRequest) returns (Empty) {}
+  rpc ClearScreenshot(Empty) returns (Empty) {}
   rpc AddCheatsheetTags(AddCheatsheetTagsRequest) returns (Empty) {}
   rpc RemoveCheatsheetTags(RemoveCheatsheetTagsRequest) returns (Empty) {}
   rpc AddWmClassTags(AddWmClassTagsRequest) returns (Empty) {}
@@ -73,6 +75,14 @@ message UploadCheatsheetRequest {
   bytes image_data = 31;
 }
 message RemoveCheatsheetRequest { string name = 1; }
+message UploadScreenshotRequest {
+  ImageFormat format = 1;
+  ByteOrder order = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  string name = 5;
+  bytes image_data = 31;
+}
 message AddCheatsheetTagsRequest {
   string name = 1;
   Tags tags = 2;

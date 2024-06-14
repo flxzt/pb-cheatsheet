@@ -3,6 +3,7 @@ pub(crate) mod wifi;
 
 use cheatsheets::{Cheatsheet, Cheatsheets};
 use core::convert::Infallible;
+use core::fmt::Display;
 use core::time::Duration;
 use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_9X15};
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -13,7 +14,9 @@ use embedded_graphics::text::Text;
 use inkview::bindings::Inkview;
 use inkview_eg::InkviewDisplay;
 use pb_cheatsheet_com::grpc::PbCheatsheetServerImpl;
-use pb_cheatsheet_com::{CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo};
+use pb_cheatsheet_com::{
+    CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo, PB_GRPC_PORT,
+};
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -24,7 +27,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
-const SERVER_ADDR: &str = "0.0.0.0:51151";
+const PB_GRPC_ADDR: &str = const_format::formatcp!("0.0.0.0:{PB_GRPC_PORT}");
 const CLIENT_DATA_DIR: &str = "/mnt/ext1/applications/pb-cheatsheet-data";
 const CHEATSHEETS_SUBFOLDER: &str = "cheatsheets";
 const LOG_FILE_NAME: &str = "pb-cheatsheet.log";
@@ -43,6 +46,11 @@ enum Msg {
     RemoveCheatsheet {
         name: String,
     },
+    UploadScreenshot {
+        screenshot: CheatsheetImage,
+        name: String,
+    },
+    ClearScreenshot,
     AddCheatsheetTags {
         name: String,
         tags: HashSet<String>,
@@ -72,6 +80,8 @@ enum UiMode {
     Manual,
     /// Automatic cheatsheet page switching dependending on matched tags based on the current reported wm class
     AutomaticWmClass,
+    /// Screenshot
+    Screenshot,
 }
 
 impl Default for UiMode {
@@ -80,19 +90,31 @@ impl Default for UiMode {
     }
 }
 
+impl Display for UiMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UiMode::Manual => write!(f, "M"),
+            UiMode::AutomaticWmClass => write!(f, "A-WMC"),
+            UiMode::Screenshot => write!(f, "SCR"),
+        }
+    }
+}
+
 impl UiMode {
-    const CYCLE_TIME: Duration = Duration::from_millis(1500);
+    const CYCLE_TIME: Duration = Duration::from_millis(1000);
 
     fn prev(&mut self) {
         *self = match self {
             Self::Manual => Self::Manual,
             Self::AutomaticWmClass => Self::Manual,
+            Self::Screenshot => Self::AutomaticWmClass,
         };
     }
     fn next(&mut self) {
         *self = match self {
             Self::Manual => Self::AutomaticWmClass,
-            Self::AutomaticWmClass => Self::AutomaticWmClass,
+            Self::AutomaticWmClass => Self::Screenshot,
+            Self::Screenshot => Self::Screenshot,
         };
     }
 }
@@ -106,6 +128,7 @@ struct UiState {
     /// Current pages for wm class
     pub current_page: HashMap<String, usize>,
     pub manual_mode_current_page: usize,
+    pub screenshot: Option<(Cheatsheet, String)>,
     pub show_stats: bool,
     pub button_prev_pressed_time: Option<Instant>,
     pub button_next_pressed_time: Option<Instant>,
@@ -122,6 +145,7 @@ impl UiState {
             screen_info: ScreenInfo::default(),
             cheatsheets,
             current_page: HashMap::default(),
+            screenshot: None,
             show_stats: false,
             button_prev_pressed_time: None,
             button_next_pressed_time: None,
@@ -173,6 +197,7 @@ impl UiState {
                     false
                 }
             }
+            UiMode::Screenshot => false,
         }
     }
 
@@ -221,6 +246,7 @@ impl UiState {
                     false
                 }
             }
+            UiMode::Screenshot => false,
         }
     }
 
@@ -244,10 +270,7 @@ impl UiState {
             page: usize,
         ) -> anyhow::Result<()> {
             let display_bounding_box = display.bounding_box();
-            let mode_string = match mode {
-                UiMode::Manual => "M",
-                UiMode::AutomaticWmClass => "A-WMC",
-            };
+            let mode_string = mode.to_string();
             let ui_info_string = format!("{mode_string}:{page}");
             let ui_info_text = Text::new(
                 &ui_info_string,
@@ -324,6 +347,32 @@ impl UiState {
                     placeholder_text.draw(display)?;
                 }
                 draw_ui_info(display, self.mode, current_page)?;
+            }
+            UiMode::Screenshot => {
+                if let Some((screenshot, _name)) = self.screenshot.as_ref() {
+                    screenshot.draw(display)?;
+                    // TODO: draw name
+                } else {
+                    let placeholder_text = Text::with_alignment(
+                        "NO SCREENSHOT FOUND",
+                        display_center,
+                        TEXT_STYLE_HUGE,
+                        embedded_graphics::text::Alignment::Center,
+                    );
+                    let placeholder_text_bounding_box = Rectangle::new(
+                        placeholder_text.bounding_box().top_left - Point::new(10, 10),
+                        placeholder_text.bounding_box().size + Size::new(20, 20),
+                    );
+                    placeholder_text_bounding_box
+                        .into_styled(FILL_WHITE)
+                        .draw(display)?;
+                    placeholder_text_bounding_box
+                        .into_styled(STROKE_THIN_BLACK)
+                        .draw(display)?;
+                    placeholder_text.draw(display)?;
+                }
+
+                draw_ui_info(display, self.mode, 0)?;
             }
         }
 
@@ -422,6 +471,26 @@ impl PbCheatsheetServerImpl for GrpcServer {
         }
     }
 
+    async fn handle_upload_screenshot(&self, screenshot: CheatsheetImage, name: String) {
+        if self
+            .tx
+            .send(Msg::UploadScreenshot { screenshot, name })
+            .is_err()
+        {
+            tracing::error!(
+                "Sending received GRPC cheatsheet image from handler failed, receiving half closed"
+            );
+        }
+    }
+
+    async fn handle_clear_screenshot(&self) {
+        if self.tx.send(Msg::ClearScreenshot).is_err() {
+            tracing::error!(
+                "Sending received GRPC screenshot from handler failed, receiving half closed"
+            );
+        }
+    }
+
     async fn handle_add_cheatsheet_tags(&self, name: String, tags: HashSet<String>) {
         if self.tx.send(Msg::AddCheatsheetTags { name, tags }).is_err() {
             tracing::error!("Sending add cheatsheet tags message failed, receiving half closed");
@@ -499,10 +568,10 @@ async fn main() -> anyhow::Result<()> {
     let msg_tx_c = msg_tx.clone();
     tokio::spawn(async move {
         let grpc_server = GrpcServer { tx: msg_tx_c };
-        println!("Starting GRPC server with listening address: '{SERVER_ADDR}'");
+        println!("Starting GRPC server with listening address: '{PB_GRPC_ADDR}'");
 
         tokio::select! {
-            _ = pb_cheatsheet_com::grpc::start_server(grpc_server, SERVER_ADDR.parse().unwrap()) => {}
+            _ = pb_cheatsheet_com::grpc::start_server(grpc_server, PB_GRPC_ADDR.parse().unwrap()) => {}
             _ = quit_token_c.cancelled() => {}
         }
     });
@@ -634,7 +703,9 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 Msg::FocusedWindow(info) => {
-                    if info.wm_class != ui_state.focused_window_info.wm_class {
+                    if info.wm_class != ui_state.focused_window_info.wm_class
+                        && ui_state.mode == UiMode::AutomaticWmClass
+                    {
                         repaint = true;
                     }
                     ui_state.focused_window_info = info;
@@ -695,6 +766,15 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Msg::RemoveCheatsheet { name } => {
                     ui_state.cheatsheets.remove_sheet(&name);
+                }
+                Msg::UploadScreenshot { screenshot, name } => {
+                    ui_state.screenshot = Some((Cheatsheet { image: screenshot }, name));
+                    ui_state.mode = UiMode::Screenshot;
+                    repaint = true;
+                }
+                Msg::ClearScreenshot => {
+                    ui_state.screenshot.take();
+                    repaint = true;
                 }
                 Msg::AddCheatsheetTags { name, tags } => {
                     for tag in tags {
