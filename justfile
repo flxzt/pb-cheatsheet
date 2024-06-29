@@ -1,7 +1,7 @@
 # Configurable options
-# the SDK version. Either "5.19" or "6.5"
-pb_sdk_version := "5.19"
-pb_device := "PB626"
+# the SDK version. Either "5.19", "6.5", "6.8"
+pb_sdk_version := "6.8"
+pb_device := "PB743G"
 gdbserver_port := "10003"
 
 cargo_sdk_feature := "sdk-" + replace(pb_sdk_version, ".", "-")

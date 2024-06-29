@@ -21,8 +21,8 @@ clap = { version = "4.5" }
 const_format = "0.2.32"
 embedded-graphics = "0.8.1"
 image = "0.25"
-inkview = { path = "../inkview-rs/inkview" }
-inkview-eg = { path = "../inkview-rs/inkview-eg" }
+inkview = { git = "https://github.com/simmsb/inkview-rs", rev = "2f653b6f0eaf2426b5d964b2c13666ab8a60e528" }
+inkview-eg = { git = "https://github.com/simmsb/inkview-rs", rev = "2f653b6f0eaf2426b5d964b2c13666ab8a60e528" }
 itertools = "0.13.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"

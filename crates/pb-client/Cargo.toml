@@ -10,6 +10,7 @@ version.workspace = true
 [features]
 sdk-5-19 = ["inkview/sdk-5-19"]
 sdk-6-5 = ["inkview/sdk-6-5"]
+sdk-6-8 = ["inkview/sdk-6-8"]
 
 [dependencies]
 pb-cheatsheet-com = { workspace = true }

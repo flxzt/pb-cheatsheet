@@ -1320,6 +1320,7 @@ dependencies = [
 [[package]]
 name = "inkview"
 version = "0.1.0"
+source = "git+https://github.com/simmsb/inkview-rs?rev=2f653b6f0eaf2426b5d964b2c13666ab8a60e528#2f653b6f0eaf2426b5d964b2c13666ab8a60e528"
 dependencies = [
  "libloading",
  "num-derive",
@@ -1330,6 +1331,7 @@ dependencies = [
 [[package]]
 name = "inkview-eg"
 version = "0.1.0"
+source = "git+https://github.com/simmsb/inkview-rs?rev=2f653b6f0eaf2426b5d964b2c13666ab8a60e528#2f653b6f0eaf2426b5d964b2c13666ab8a60e528"
 dependencies = [
  "embedded-graphics-core",
  "inkview",

@@ -28,8 +28,15 @@ pub fn wifi_check_connected(iv: &Inkview) -> anyhow::Result<bool> {
 
 fn try_connect(iv: &Inkview, show_hourglass: bool) -> anyhow::Result<Option<String>> {
     let network_name = std::ptr::null() as *const c_char;
-    let show_hourglass = if show_hourglass { 1 } else { 0 };
-    let res = unsafe { iv.NetConnect2(network_name, show_hourglass) };
+
+    #[cfg(any(feature = "sdk-5-19", feature = "sdk-6-5"))]
+    let res = {
+        let show_hourglass = if show_hourglass { 1 } else { 0 };
+        unsafe { iv.NetConnect2(network_name, show_hourglass) }
+    };
+    #[cfg(feature = "sdk-6-8")]
+    let res = { unsafe { iv.NetConnect2(network_name, show_hourglass) } };
+
     if res != 0 {
         return Err(anyhow::anyhow!(
             "inkview 'NetConnect2()' returned with non-zero code: '{res}'"
