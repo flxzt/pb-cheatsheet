@@ -1,6 +1,6 @@
 use pb_cheatsheet_com::grpc::PbCheatsheetServerImpl;
 use pb_cheatsheet_com::{
-    CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo, PB_GRPC_PORT,
+    CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo, TagsEither, PB_GRPC_PORT,
 };
 use std::collections::HashSet;
 
@@ -62,10 +62,10 @@ impl PbCheatsheetServerImpl for GrpcServer {
         println!("{tags:#?}");
     }
 
-    async fn handle_remove_cheatsheet_tags(&self, name: String, tags: HashSet<String>) {
+    async fn handle_remove_cheatsheet_tags(&self, name: String, either: TagsEither) {
         println!("Received remove cheatsheet tags");
         println!("{name:#?}");
-        println!("{tags:#?}");
+        println!("{either:#?}");
     }
 
     async fn handle_add_wm_class_tags(&self, wm_class: String, tags: HashSet<String>) {
@@ -74,10 +74,10 @@ impl PbCheatsheetServerImpl for GrpcServer {
         println!("{tags:#?}");
     }
 
-    async fn handle_remove_wm_class_tags(&self, wm_class: String, tags: HashSet<String>) {
+    async fn handle_remove_wm_class_tags(&self, wm_class: String, either: TagsEither) {
         println!("Received remove wm class tags");
         println!("{wm_class:#?}");
-        println!("{tags:#?}");
+        println!("{either:#?}");
     }
 }
 

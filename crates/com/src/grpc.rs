@@ -5,6 +5,7 @@ pub mod pb_cheatsheet_proto {
 use self::pb_cheatsheet_proto::pb_cheatsheet_client::PbCheatsheetClient;
 use crate::{
     ByteOrder, CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ImageFormat, ScreenInfo,
+    TagsEither,
 };
 use anyhow::Context;
 use pb_cheatsheet_proto::pb_cheatsheet_server::PbCheatsheet;
@@ -13,6 +14,7 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use tonic::transport::{Channel, Server};
 use tonic::{Code, Request, Response, Status};
+use tracing::debug;
 
 impl From<pb_cheatsheet_proto::FocusedWindowInfo> for FocusedWindowInfo {
     fn from(value: pb_cheatsheet_proto::FocusedWindowInfo) -> Self {
@@ -111,9 +113,9 @@ pub trait PbCheatsheetServerImpl: PbCheatsheet + Send + Sync + 'static {
     async fn handle_clear_screenshot(&self);
     async fn handle_remove_cheatsheet(&self, name: String);
     async fn handle_add_cheatsheet_tags(&self, name: String, tags: HashSet<String>);
-    async fn handle_remove_cheatsheet_tags(&self, name: String, tags: HashSet<String>);
+    async fn handle_remove_cheatsheet_tags(&self, name: String, either: TagsEither);
     async fn handle_add_wm_class_tags(&self, wm_class: String, tags: HashSet<String>);
-    async fn handle_remove_wm_class_tags(&self, wm_class: String, tags: HashSet<String>);
+    async fn handle_remove_wm_class_tags(&self, wm_class: String, either: TagsEither);
 }
 
 #[tonic::async_trait]
@@ -255,9 +257,11 @@ where
         let req = req.into_inner();
         self.handle_remove_cheatsheet_tags(
             req.name,
-            req.tags
-                .map(|t| t.tags.into_iter().collect())
-                .unwrap_or_default(),
+            req.either
+                .ok_or(tonic::Status::internal(
+                    "remove cheatsheet tags 'Either' is None",
+                ))?
+                .into(),
         )
         .await;
         Ok(Response::new(pb_cheatsheet_proto::Empty {}))
@@ -285,9 +289,11 @@ where
         let req = req.into_inner();
         self.handle_remove_wm_class_tags(
             req.wm_class,
-            req.tags
-                .map(|t| t.tags.into_iter().collect())
-                .unwrap_or_default(),
+            req.either
+                .ok_or(tonic::Status::internal(
+                    "remove wm class tags 'Either' is None",
+                ))?
+                .into(),
         )
         .await;
         Ok(Response::new(pb_cheatsheet_proto::Empty {}))
@@ -323,7 +329,7 @@ impl PbCheatsheetClientStruct {
     /// Report the focused window to the server
     #[tracing::instrument(skip_all)]
     pub async fn focused_window(&mut self, info: FocusedWindowInfo) -> anyhow::Result<()> {
-        tracing::debug!("Focused window:\n{info:#?}");
+        debug!("Focused window:\n{info:#?}");
         let req = Request::new(info.into());
         let _reply = self
             .client
@@ -335,7 +341,7 @@ impl PbCheatsheetClientStruct {
 
     #[tracing::instrument(skip_all)]
     pub async fn get_screen_info(&mut self) -> anyhow::Result<ScreenInfo> {
-        tracing::debug!("Get screen info");
+        debug!("Get screen info");
         let req = Request::new(pb_cheatsheet_proto::Empty {});
         let reply = self
             .client
@@ -347,7 +353,7 @@ impl PbCheatsheetClientStruct {
 
     #[tracing::instrument(skip_all)]
     pub async fn get_cheatsheets_info(&mut self) -> anyhow::Result<CheatsheetsInfo> {
-        tracing::debug!("Get cheatsheets info");
+        debug!("Get cheatsheets info");
         let req = Request::new(pb_cheatsheet_proto::Empty {});
         let reply = self
             .client
@@ -364,7 +370,7 @@ impl PbCheatsheetClientStruct {
         name: String,
         tags: HashSet<String>,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Uploading cheatsheet image\n{image:#?}");
+        debug!("Uploading cheatsheet image\n{image:#?}");
         let req = Request::new(pb_cheatsheet_proto::UploadCheatsheetRequest {
             format: image.format.try_into()?,
             order: image.order.try_into()?,
@@ -381,13 +387,13 @@ impl PbCheatsheetClientStruct {
             .upload_cheatsheet(req)
             .await
             .context("Uploading cheatsheet image")?;
-        tracing::debug!("Upload finished");
+        debug!("Upload finished");
         Ok(())
     }
 
     #[tracing::instrument(skip_all)]
     pub async fn remove_cheatsheet(&mut self, name: String) -> anyhow::Result<()> {
-        tracing::debug!("Remove cheatsheet");
+        debug!("Remove cheatsheet");
         let req = Request::new(pb_cheatsheet_proto::RemoveCheatsheetRequest { name });
         let _reply = self
             .client
@@ -403,7 +409,7 @@ impl PbCheatsheetClientStruct {
         screenshot: CheatsheetImage,
         name: String,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Uploading screenshot\n{screenshot:#?}");
+        debug!("Uploading screenshot\n{screenshot:#?}");
         let req = Request::new(pb_cheatsheet_proto::UploadScreenshotRequest {
             format: screenshot.format.try_into()?,
             order: screenshot.order.try_into()?,
@@ -417,13 +423,13 @@ impl PbCheatsheetClientStruct {
             .upload_screenshot(req)
             .await
             .context("Uploading screenshot")?;
-        tracing::debug!("Upload finished");
+        debug!("Upload finished");
         Ok(())
     }
 
     #[tracing::instrument(skip_all)]
     pub async fn clear_screenshot(&mut self) -> anyhow::Result<()> {
-        tracing::debug!("Clear screenshot");
+        debug!("Clear screenshot");
         let req = Request::new(pb_cheatsheet_proto::Empty {});
         let _reply = self
             .client
@@ -439,7 +445,7 @@ impl PbCheatsheetClientStruct {
         name: String,
         tags: HashSet<String>,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Add cheatsheet tags");
+        debug!("Add cheatsheet tags");
         let req = Request::new(pb_cheatsheet_proto::AddCheatsheetTagsRequest {
             name,
             tags: Some(pb_cheatsheet_proto::Tags {
@@ -458,14 +464,12 @@ impl PbCheatsheetClientStruct {
     pub async fn remove_cheatsheet_tags(
         &mut self,
         name: String,
-        tags: HashSet<String>,
+        either: TagsEither,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Remove cheatsheet tags");
+        debug!("Remove cheatsheet tags");
         let req = Request::new(pb_cheatsheet_proto::RemoveCheatsheetTagsRequest {
             name,
-            tags: Some(pb_cheatsheet_proto::Tags {
-                tags: tags.into_iter().collect(),
-            }),
+            either: Some(either.into()),
         });
         let _reply = self
             .client
@@ -481,7 +485,7 @@ impl PbCheatsheetClientStruct {
         wm_class: String,
         tags: HashSet<String>,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Add wm class tags");
+        debug!("Add wm class tags");
         let req = Request::new(pb_cheatsheet_proto::AddWmClassTagsRequest {
             wm_class,
             tags: Some(pb_cheatsheet_proto::Tags {
@@ -500,14 +504,12 @@ impl PbCheatsheetClientStruct {
     pub async fn remove_wm_class_tags(
         &mut self,
         wm_class: String,
-        tags: HashSet<String>,
+        either: TagsEither,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Remove wm class tags");
+        debug!("Remove wm class tags");
         let req = Request::new(pb_cheatsheet_proto::RemoveWmClassTagsRequest {
             wm_class,
-            tags: Some(pb_cheatsheet_proto::Tags {
-                tags: tags.into_iter().collect(),
-            }),
+            either: Some(either.into()),
         });
         let _reply = self
             .client

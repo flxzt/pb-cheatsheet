@@ -89,7 +89,10 @@ message AddCheatsheetTagsRequest {
 }
 message RemoveCheatsheetTagsRequest {
   string name = 1;
-  Tags tags = 2;
+  oneof either {
+    Tags tags = 2;
+    Empty all = 3;
+  }
 }
 message AddWmClassTagsRequest {
   string wm_class = 1;
@@ -97,5 +100,8 @@ message AddWmClassTagsRequest {
 }
 message RemoveWmClassTagsRequest {
   string wm_class = 1;
-  Tags tags = 2;
+  oneof either {
+    Tags tags = 2;
+    Empty all = 3;
+  }
 }

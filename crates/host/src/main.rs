@@ -5,11 +5,12 @@ use anyhow::Context;
 use clap::Parser;
 use imageprocessing::Rotate;
 use pb_cheatsheet_com::grpc::PbCheatsheetClientStruct;
-use pb_cheatsheet_com::FocusedWindowInfo;
+use pb_cheatsheet_com::{FocusedWindowInfo, TagsEither};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+use tracing::{debug, error};
 
 /// pb-cheatsheet-host
 ///
@@ -79,6 +80,8 @@ enum Command {
         /// Associated tags.
         #[arg(short, long)]
         tags: Vec<String>,
+        #[arg(short, long)]
+        all: bool,
     },
     /// Add wm class tags.
     AddWmClassTags {
@@ -97,6 +100,8 @@ enum Command {
         /// Associated tags.
         #[arg(short, long)]
         tags: Vec<String>,
+        #[arg(short, long)]
+        all: bool,
     },
 }
 
@@ -159,9 +164,13 @@ async fn main() -> anyhow::Result<()> {
             run_add_cheatsheet_tags(grpc_client, quit_token, name, tags.into_iter().collect())
                 .await?;
         }
-        Command::RemoveCheatsheetTags { name, tags } => {
-            run_remove_cheatsheet_tags(grpc_client, quit_token, name, tags.into_iter().collect())
-                .await?;
+        Command::RemoveCheatsheetTags { name, tags, all } => {
+            let either = if all {
+                TagsEither::All
+            } else {
+                TagsEither::Tags(tags.into_iter().collect())
+            };
+            run_remove_cheatsheet_tags(grpc_client, quit_token, name, either).await?;
         }
         Command::AddWmClassTags { wm_class, tags } => {
             run_add_wm_class_tags(
@@ -172,14 +181,17 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
         }
-        Command::RemoveWmClassTags { wm_class, tags } => {
-            run_remove_wm_class_tags(
-                grpc_client,
-                quit_token,
-                wm_class,
-                tags.into_iter().collect(),
-            )
-            .await?;
+        Command::RemoveWmClassTags {
+            wm_class,
+            tags,
+            all,
+        } => {
+            let either = if all {
+                TagsEither::All
+            } else {
+                TagsEither::Tags(tags.into_iter().collect())
+            };
+            run_remove_wm_class_tags(grpc_client, quit_token, wm_class, either).await?;
         }
     }
 
@@ -192,7 +204,7 @@ fn setup_logging() -> Result<(), tracing::dispatcher::SetGlobalDefaultError> {
         .with_ansi(false)
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
-    tracing::debug!("tracing initialized..");
+    debug!("tracing initialized..");
     Ok(())
 }
 
@@ -212,9 +224,7 @@ async fn run_report_focused_window(
         let mut last_info = match dbus::get_focused_window_info(&dbus_connection).await {
             Ok(i) => i,
             Err(e) => {
-                tracing::error!(
-                    "Get initial focused window info failed, aborting application. Err: {e:?}"
-                );
+                error!("Get initial focused window info failed, aborting application. Err: {e:?}");
                 quit_token_c.cancel();
                 return;
             }
@@ -228,14 +238,14 @@ async fn run_report_focused_window(
             let info = match dbus::get_focused_window_info(&dbus_connection).await {
                 Ok(i) => i,
                 Err(e) => {
-                    tracing::error!("Poll focused window info from D-Bus, Err: {e:?}");
+                    error!("Poll focused window info from D-Bus, Err: {e:?}");
                     continue;
                 }
             };
             if info != last_info {
-                tracing::debug!("Got focused window change:\n{info:#?}");
+                debug!("Got focused window change:\n{info:#?}");
                 if focused_window_tx.send(info.clone()).is_err() {
-                    tracing::error!("Send changed focused window info to GRPC client task, receiving side closed.");
+                    error!("Send changed focused window info to GRPC client task, receiving side closed.");
                     quit_token_c.cancel();
                     break;
                 }
@@ -252,7 +262,7 @@ async fn run_report_focused_window(
                 _ = focus_window_rx.changed() => {
                     let info = focus_window_rx.borrow_and_update().clone();
                     if let Err(e) = grpc_client.focused_window(info).await {
-                        tracing::error!("Report focused window info over GRPC, Err: {e:?}");
+                        error!("Report focused window info over GRPC, Err: {e:?}");
                     }
                 },
                 _ = quit_token_c.cancelled() => break
@@ -319,21 +329,21 @@ async fn upload_cheatsheet_image(
     tags: HashSet<String>,
 ) -> anyhow::Result<()> {
     let screen_info = grpc_client.get_screen_info().await?;
-    tracing::debug!("Preparing image for device with fetched screen info: '{screen_info:#?}'");
+    debug!("Preparing image for device with fetched screen info: '{screen_info:#?}'");
     let image = tokio::select! {
         image = imageprocessing::load_prepare_image(image, screen_info.width, screen_info.height, Rotate::Rotate0Deg, false) => {
             image.context("Load and prepare image from file")?
         },
         _ = quit_token.cancelled() => return Ok(())
     };
-    tracing::debug!("Uploading image..");
+    debug!("Uploading image..");
     tokio::select! {
         res = grpc_client.upload_cheatsheet_image(image, name, tags) => {
             res.context("Upload image to client")?
         }
         _ = quit_token.cancelled() => return Ok(())
     }
-    tracing::debug!("Upload finished.");
+    debug!("Upload finished.");
     Ok(())
 }
 
@@ -365,24 +375,24 @@ async fn run_upload_screenshot(
         _ = quit_token.cancelled() => return Ok(())
     };
 
-    tracing::debug!("Got screenshot path '{:?}'", screenshot);
+    debug!("Got screenshot path '{:?}'", screenshot);
 
     let screen_info = grpc_client.get_screen_info().await?;
-    tracing::debug!("Preparing screenshot for device with fetched screen info: '{screen_info:#?}'");
+    debug!("Preparing screenshot for device with fetched screen info: '{screen_info:#?}'");
     let image = tokio::select! {
         image = imageprocessing::load_prepare_image(screenshot, screen_info.width, screen_info.height, Rotate::Rotate270Deg, invert) => {
             image.context("Load and prepare screenshot from file")?
         },
         _ = quit_token.cancelled() => return Ok(())
     };
-    tracing::debug!("Uploading screenshot..");
+    debug!("Uploading screenshot..");
     tokio::select! {
         res = grpc_client.upload_screenshot(image, name) => {
             res.context("Upload screenshot to client")?
         }
         _ = quit_token.cancelled() => return Ok(())
     }
-    tracing::debug!("Upload finished.");
+    debug!("Upload finished.");
     Ok(())
 }
 
@@ -412,9 +422,9 @@ async fn run_remove_cheatsheet_tags(
     mut grpc_client: PbCheatsheetClientStruct,
     _quit_token: CancellationToken,
     name: String,
-    tags: HashSet<String>,
+    either: TagsEither,
 ) -> anyhow::Result<()> {
-    grpc_client.remove_cheatsheet_tags(name, tags).await
+    grpc_client.remove_cheatsheet_tags(name, either).await
 }
 
 #[tracing::instrument(skip_all)]
@@ -432,7 +442,7 @@ async fn run_remove_wm_class_tags(
     mut grpc_client: PbCheatsheetClientStruct,
     _quit_token: CancellationToken,
     wm_class: String,
-    tags: HashSet<String>,
+    either: TagsEither,
 ) -> anyhow::Result<()> {
-    grpc_client.remove_wm_class_tags(wm_class, tags).await
+    grpc_client.remove_wm_class_tags(wm_class, either).await
 }

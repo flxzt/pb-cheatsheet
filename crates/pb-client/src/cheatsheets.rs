@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
+use tracing::debug;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Cheatsheets {
@@ -97,6 +98,16 @@ impl Cheatsheets {
         Ok(metadata.tags.remove(tag))
     }
 
+    pub(crate) fn clear_sheet_tags(&mut self, name: &str) -> anyhow::Result<()> {
+        let Some((metadata, _sheet)) = self.sheets.get_mut(name) else {
+            return Err(anyhow::anyhow!(
+                "Clearing cheatsheet '{name}' tags failed, not found."
+            ));
+        };
+        metadata.tags.clear();
+        Ok(())
+    }
+
     pub(crate) fn add_wm_class_tag(&mut self, wm_class: &str, tag: String) -> bool {
         if let Some(tags) = self.wm_class_tags.get_mut(wm_class) {
             tags.insert(tag)
@@ -114,9 +125,28 @@ impl Cheatsheets {
         tag: &str,
     ) -> anyhow::Result<bool> {
         let tags = self.wm_class_tags.get_mut(wm_class).ok_or_else(|| {
-            anyhow::anyhow!("Removing tag from wm class '{wm_class}' failed, not present.")
+            anyhow::anyhow!("Removing tag from wm class '{wm_class}' failed, not found.")
         })?;
-        Ok(tags.remove(tag))
+        let removed = tags.remove(tag);
+        if tags.is_empty() {
+            self.wm_class_tags.remove(wm_class);
+        }
+        Ok(removed)
+    }
+
+    #[allow(unused)]
+    pub(crate) fn clear_wm_class_tags(&mut self, wm_class: &str) -> anyhow::Result<()> {
+        let tags = self.wm_class_tags.get_mut(wm_class).ok_or_else(|| {
+            anyhow::anyhow!("Clearing wm class '{wm_class}' tags failed, not found.")
+        })?;
+        tags.clear();
+        Ok(())
+    }
+
+    pub(crate) fn remove_wm_class(&mut self, wm_class: &str) -> anyhow::Result<HashSet<String>> {
+        self.wm_class_tags
+            .remove(wm_class)
+            .ok_or_else(|| anyhow::anyhow!("Couldn't remove wm class, not found."))
     }
 
     #[allow(unused)]
@@ -161,7 +191,7 @@ impl Cheatsheets {
         found_sheets.collect()
     }
 
-    pub(crate) fn dispatch_save_to_path(
+    pub(crate) fn dispatch_save_all(
         &self,
         base_path: impl AsRef<Path>,
         file_save_tx: mpsc::UnboundedSender<(PathBuf, Vec<u8>)>,
@@ -185,6 +215,26 @@ impl Cheatsheets {
         Ok(())
     }
 
+    pub(crate) fn dispatch_save_metadata(
+        &self,
+        base_path: impl AsRef<Path>,
+        file_save_tx: mpsc::UnboundedSender<(PathBuf, Vec<u8>)>,
+    ) -> anyhow::Result<()> {
+        let base_path = base_path.as_ref();
+
+        for (name, (metadata, _)) in self.sheets.iter() {
+            let metadata_path = base_path.join(format!("{name}-metadata.json"));
+            let metadata_data = serde_json::to_vec(metadata)?;
+            file_save_tx.send((metadata_path, metadata_data))?;
+        }
+
+        let wm_class_tags_path = base_path.join("wm_class_tags.json");
+        let wm_class_tags_data = serde_json::to_vec(&self.wm_class_tags)?;
+        file_save_tx.send((wm_class_tags_path, wm_class_tags_data))?;
+
+        Ok(())
+    }
+
     pub(crate) async fn load_from_path(base_path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let base_path = base_path.as_ref();
         let mut sheets = HashMap::new();
@@ -194,7 +244,7 @@ impl Cheatsheets {
             if !entry_path.extension().map(|e| e == "cs").unwrap_or(false) {
                 continue;
             }
-            tracing::debug!("Loading cheatsheet from file '{}'", entry_path.display());
+            debug!("Loading cheatsheet from file '{}'", entry_path.display());
             let basename = entry_path
                 .file_stem()
                 .ok_or_else(|| {

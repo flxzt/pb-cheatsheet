@@ -20,6 +20,12 @@ prerequisites:
     rustup target add {{client_build_target}}
     cargo install cargo-zigbuild
 
+fmt *ARGS:
+    cargo fmt
+
+lint *ARGS:
+    cargo clippy --features={{cargo_sdk_feature}} -- {{ARGS}}
+
 build-host:
     cargo build --profile {{cargo_profile}} -p pb-cheatsheet-host
 

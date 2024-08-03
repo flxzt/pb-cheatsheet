@@ -15,7 +15,7 @@ use inkview::bindings::Inkview;
 use inkview_eg::InkviewDisplay;
 use pb_cheatsheet_com::grpc::PbCheatsheetServerImpl;
 use pb_cheatsheet_com::{
-    CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo, PB_GRPC_PORT,
+    CheatsheetImage, CheatsheetsInfo, FocusedWindowInfo, ScreenInfo, TagsEither, PB_GRPC_PORT,
 };
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
@@ -25,6 +25,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tracing::{debug, error, warn};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 const PB_GRPC_ADDR: &str = const_format::formatcp!("0.0.0.0:{PB_GRPC_PORT}");
@@ -57,7 +58,7 @@ enum Msg {
     },
     RemoveCheatsheetTags {
         name: String,
-        tags: HashSet<String>,
+        either: TagsEither,
     },
     AddWmClassTags {
         wm_class: String,
@@ -65,7 +66,7 @@ enum Msg {
     },
     RemoveWmClassTags {
         wm_class: String,
-        tags: HashSet<String>,
+        either: TagsEither,
     },
 }
 
@@ -412,7 +413,7 @@ impl UiState {
 impl PbCheatsheetServerImpl for GrpcServer {
     async fn handle_focused_window(&self, info: FocusedWindowInfo) {
         if self.tx.send(Msg::FocusedWindow(info)).is_err() {
-            tracing::error!(
+            error!(
                 "Sending received GRPC focused window info from handler failed, receiving half closed"
             );
         }
@@ -459,7 +460,7 @@ impl PbCheatsheetServerImpl for GrpcServer {
             .send(Msg::UploadCheatsheet { image, name, tags })
             .is_err()
         {
-            tracing::error!(
+            error!(
                 "Sending received GRPC cheatsheet image from handler failed, receiving half closed"
             );
         }
@@ -467,7 +468,7 @@ impl PbCheatsheetServerImpl for GrpcServer {
 
     async fn handle_remove_cheatsheet(&self, name: String) {
         if self.tx.send(Msg::RemoveCheatsheet { name }).is_err() {
-            tracing::error!("Sending remove cheatsheet message failed, receiving half closed");
+            error!("Sending remove cheatsheet message failed, receiving half closed");
         }
     }
 
@@ -477,7 +478,7 @@ impl PbCheatsheetServerImpl for GrpcServer {
             .send(Msg::UploadScreenshot { screenshot, name })
             .is_err()
         {
-            tracing::error!(
+            error!(
                 "Sending received GRPC cheatsheet image from handler failed, receiving half closed"
             );
         }
@@ -485,25 +486,23 @@ impl PbCheatsheetServerImpl for GrpcServer {
 
     async fn handle_clear_screenshot(&self) {
         if self.tx.send(Msg::ClearScreenshot).is_err() {
-            tracing::error!(
-                "Sending received GRPC screenshot from handler failed, receiving half closed"
-            );
+            error!("Sending received GRPC screenshot from handler failed, receiving half closed");
         }
     }
 
     async fn handle_add_cheatsheet_tags(&self, name: String, tags: HashSet<String>) {
         if self.tx.send(Msg::AddCheatsheetTags { name, tags }).is_err() {
-            tracing::error!("Sending add cheatsheet tags message failed, receiving half closed");
+            error!("Sending add cheatsheet tags message failed, receiving half closed");
         }
     }
 
-    async fn handle_remove_cheatsheet_tags(&self, name: String, tags: HashSet<String>) {
+    async fn handle_remove_cheatsheet_tags(&self, name: String, either: TagsEither) {
         if self
             .tx
-            .send(Msg::RemoveCheatsheetTags { name, tags })
+            .send(Msg::RemoveCheatsheetTags { name, either })
             .is_err()
         {
-            tracing::error!("Sending remove cheatsheet tags message failed, receiving half closed");
+            error!("Sending remove cheatsheet tags message failed, receiving half closed");
         }
     }
 
@@ -513,17 +512,17 @@ impl PbCheatsheetServerImpl for GrpcServer {
             .send(Msg::AddWmClassTags { wm_class, tags })
             .is_err()
         {
-            tracing::error!("Sending add wm class tags message failed, receiving half closed");
+            error!("Sending add wm class tags message failed, receiving half closed");
         }
     }
 
-    async fn handle_remove_wm_class_tags(&self, wm_class: String, tags: HashSet<String>) {
+    async fn handle_remove_wm_class_tags(&self, wm_class: String, either: TagsEither) {
         if self
             .tx
-            .send(Msg::RemoveWmClassTags { wm_class, tags })
+            .send(Msg::RemoveWmClassTags { wm_class, either })
             .is_err()
         {
-            tracing::error!("Sending add wm class tags message failed, receiving half closed");
+            error!("Sending add wm class tags message failed, receiving half closed");
         }
     }
 }
@@ -544,7 +543,7 @@ async fn main() -> anyhow::Result<()> {
     let exit_cleanup_token_c = exit_cleanup_token.clone();
     let file_save_task = tokio::spawn(async move {
         while let Some((file_path, data)) = file_save_rx.recv().await {
-            tracing::debug!("Saving file with path '{}'", file_path.display());
+            debug!("Saving file with path '{}'", file_path.display());
             if let Err(e) = async {
                 fs::create_dir_all(file_path.parent().ok_or_else(|| {
                     anyhow::anyhow!("File '{}' does not have parent", file_path.display())
@@ -557,10 +556,10 @@ async fn main() -> anyhow::Result<()> {
             }
             .await
             {
-                tracing::error!("Saving file '{}' failed, Err: {e:?}'", file_path.display());
+                error!("Saving file '{}' failed, Err: {e:?}'", file_path.display());
             }
         }
-        tracing::debug!("File save task finished, sender closed");
+        debug!("File save task finished, sender closed");
     });
 
     // GRPC server task
@@ -578,7 +577,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut ui_state = UiState::with_loaded_cheatsheets()
         .await
-        .inspect_err(|e| tracing::error!("Display state image loading failed, Err: {e:?}"))
+        .inspect_err(|e| error!("Display state image loading failed, Err: {e:?}"))
         .unwrap_or_default();
 
     // Msg handle task
@@ -587,9 +586,11 @@ async fn main() -> anyhow::Result<()> {
 
         loop {
             let mut repaint = false;
+            let mut save_cheatsheets = false;
+            let mut save_metadata = false;
 
             let msg = msg_rx.blocking_recv();
-            tracing::debug!("Handling received message:\n{msg:?}");
+            debug!("Handling received message:\n{msg:?}");
             let Some(msg) = msg else {
                 continue;
             };
@@ -631,7 +632,7 @@ async fn main() -> anyhow::Result<()> {
 
                             // Initialize display
                             if display.set(InkviewDisplay::new(iv)).is_err() {
-                                tracing::error!("Inkview display was already initialized when inkview init event was received");
+                                error!("Inkview display was already initialized when inkview init event was received");
                             }
 
                             // Wifi keep-alive task
@@ -643,7 +644,7 @@ async fn main() -> anyhow::Result<()> {
                                     tokio::select! {
                                         _ = interval.tick() => {
                                             if let Err(e) = wifi::wifi_keepalive(iv) {
-                                                tracing::error!("Wifi keep-alive failed, Err: {e:?}");
+                                                error!("Wifi keep-alive failed, Err: {e:?}");
                                             }
                                         }
                                         _ = quit_token_c.cancelled() => break,
@@ -722,18 +723,16 @@ async fn main() -> anyhow::Result<()> {
                             }))
                             .is_err()
                         {
-                            tracing::error!("Sending screen info answer over channel failed, receiver half dropped");
+                            error!("Sending screen info answer over channel failed, receiver half dropped");
                         }
                     } else {
-                        tracing::warn!(
-                            "Display not initialized yet when trying to retrieve its dimensions"
-                        );
+                        warn!("Display not initialized yet when trying to retrieve its dimensions");
                     }
                 }
                 Msg::GetCheatsheetsInfo(tx) => {
                     let info = ui_state.cheatsheets.get_info();
                     if tx.send(Ok(info)).is_err() {
-                        tracing::error!(
+                        error!(
                             "Sending cheatsheets info over channel failed, receiver half dropped"
                         );
                     }
@@ -756,13 +755,8 @@ async fn main() -> anyhow::Result<()> {
                             .insert(ui_state.focused_window_info.wm_class.clone(), 0);
                     };
 
-                    if let Err(e) = ui_state.cheatsheets.dispatch_save_to_path(
-                        PathBuf::from(CLIENT_DATA_DIR).join(CHEATSHEETS_SUBFOLDER),
-                        file_save_tx.clone(),
-                    ) {
-                        tracing::error!("Failed to dispatch saving cheatsheets, Err: {e:?}");
-                    };
                     repaint = true;
+                    save_cheatsheets = true;
                 }
                 Msg::RemoveCheatsheet { name } => {
                     ui_state.cheatsheets.remove_sheet(&name);
@@ -779,56 +773,108 @@ async fn main() -> anyhow::Result<()> {
                 Msg::AddCheatsheetTags { name, tags } => {
                     for tag in tags {
                         if let Err(e) = ui_state.cheatsheets.add_sheet_tag(&name, tag) {
-                            tracing::error!("Failed to add tag to cheatsheet '{name}', Err: {e:?}");
+                            error!("Failed to add tag to cheatsheet '{name}', Err: {e:?}");
                         }
                     }
+                    repaint = true;
+                    save_metadata = true;
                 }
-                Msg::RemoveCheatsheetTags { name, tags } => {
-                    for tag in tags {
-                        if let Err(e) = ui_state.cheatsheets.remove_sheet_tag(&name, &tag) {
-                            tracing::error!(
-                                "Failed to remove tag '{tag}' from cheatsheet '{name}', Err: {e:?}"
-                            );
+                Msg::RemoveCheatsheetTags { name, either } => {
+                    match either {
+                        TagsEither::Tags(tags) => {
+                            for tag in tags {
+                                if let Err(e) = ui_state.cheatsheets.remove_sheet_tag(&name, &tag) {
+                                    error!(
+                                        "Failed to remove tag '{tag}' from cheatsheet '{name}', Err: {e:?}"
+                                    );
+                                }
+                            }
                         }
-                    }
+                        TagsEither::All => {
+                            if let Err(e) = ui_state.cheatsheets.clear_sheet_tags(&name) {
+                                error!(
+                                    "Failed to remove clear cheatsheet '{name}' tags, Err: {e:?}"
+                                );
+                            }
+                        }
+                    };
+                    repaint = true;
+                    save_metadata = true;
                 }
                 Msg::AddWmClassTags { wm_class, tags } => {
                     for tag in tags {
                         ui_state.cheatsheets.add_wm_class_tag(&wm_class, tag);
                     }
+                    repaint = true;
+                    save_metadata = true;
                 }
-                Msg::RemoveWmClassTags { wm_class, tags } => {
-                    for tag in tags {
-                        if let Err(e) = ui_state.cheatsheets.remove_wm_class_tag(&wm_class, &tag) {
-                            tracing::error!(
-                                "Failed to remove tag '{tag}' from wm class '{wm_class}', Err: {e:?}"
-                            );
+                Msg::RemoveWmClassTags { wm_class, either } => {
+                    match either {
+                        TagsEither::Tags(tags) => {
+                            for tag in tags {
+                                if let Err(e) =
+                                    ui_state.cheatsheets.remove_wm_class_tag(&wm_class, &tag)
+                                {
+                                    error!(
+                                        "Failed to remove tag '{tag}' from wm class '{wm_class}', Err: {e:?}"
+                                    );
+                                }
+                            }
                         }
-                    }
+                        TagsEither::All => {
+                            if let Err(e) = ui_state.cheatsheets.remove_wm_class(&wm_class) {
+                                error!(
+                                    "Failed to remove clear wm class '{wm_class}' tags, Err: {e:?}"
+                                );
+                            }
+                        }
+                    };
+                    repaint = true;
+                    save_metadata = true;
                 }
             }
 
             if repaint {
                 let Some(display) = display.get_mut() else {
-                    tracing::warn!("Display not initialized yet when trying to repaint.");
+                    warn!("Display not initialized yet when trying to repaint.");
                     return;
                 };
                 ui_state.update(iv, display);
 
                 if let Err(e) = ui_state.draw_to_display(display) {
-                    tracing::error!("Drawing display state failed, Err: {e:?}");
+                    error!("Drawing display state failed, Err: {e:?}");
                 }
                 display.flush();
             }
 
-            if quit_token.is_cancelled() {
-                tracing::debug!("Quitting! Saving cheatsheets and metadata to files");
+            if save_cheatsheets {
+                debug!("Saving cheatsheets and metadata");
 
-                if let Err(e) = ui_state.cheatsheets.dispatch_save_to_path(
+                if let Err(e) = ui_state.cheatsheets.dispatch_save_all(
+                    PathBuf::from(CLIENT_DATA_DIR).join(CHEATSHEETS_SUBFOLDER),
+                    file_save_tx.clone(),
+                ) {
+                    error!("Failed to dispatch saving cheatsheets, Err: {e:?}");
+                };
+            } else if save_metadata {
+                debug!("Saving metadata");
+
+                if let Err(e) = ui_state.cheatsheets.dispatch_save_metadata(
+                    PathBuf::from(CLIENT_DATA_DIR).join(CHEATSHEETS_SUBFOLDER),
+                    file_save_tx.clone(),
+                ) {
+                    error!("Failed to dispatch saving metadata, Err: {e:?}");
+                };
+            }
+
+            if quit_token.is_cancelled() {
+                debug!("Quitting! Saving cheatsheets and metadata");
+
+                if let Err(e) = ui_state.cheatsheets.dispatch_save_all(
                     PathBuf::from(CLIENT_DATA_DIR).join(CHEATSHEETS_SUBFOLDER),
                     file_save_tx,
                 ) {
-                    tracing::error!("Failed to dispatch saving images on exit, Err: {e:?}");
+                    error!("Failed to dispatch saving images on exit, Err: {e:?}");
                 };
 
                 break;
@@ -838,7 +884,7 @@ async fn main() -> anyhow::Result<()> {
         println!("Exiting..");
         tokio::runtime::Handle::current().block_on(async move {
             if let Err(e) = file_save_task.await {
-                tracing::error!("File save task failed, Err: {e:?}");
+                error!("File save task failed, Err: {e:?}");
             }
             drop(logfile_guard);
         });
@@ -849,7 +895,7 @@ async fn main() -> anyhow::Result<()> {
         match event {
             event @ inkview::Event::Exit => {
                 if msg_tx.clone().send(Msg::InkviewEvent(event)).is_err() {
-                    tracing::error!("Failed to send InkviewEvent message, receiver closed.");
+                    error!("Failed to send InkviewEvent message, receiver closed.");
                 }
                 while !exit_cleanup_token.is_cancelled() {
                     std::thread::sleep(Duration::from_millis(8));
@@ -857,7 +903,7 @@ async fn main() -> anyhow::Result<()> {
             }
             event => {
                 if msg_tx.clone().send(Msg::InkviewEvent(event)).is_err() {
-                    tracing::error!("Failed to send InkviewEvent message, receiver closed.");
+                    error!("Failed to send InkviewEvent message, receiver closed.");
                 }
             }
         }
@@ -897,7 +943,7 @@ fn setup_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    tracing::debug!("tracing initialized..");
+    debug!("tracing initialized..");
     Ok(guard)
 }
 

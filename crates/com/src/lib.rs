@@ -3,9 +3,72 @@ pub mod grpc;
 use core::fmt::Display;
 use grpc::pb_cheatsheet_proto;
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::collections::HashSet;
 use std::fmt::Debug;
 
 pub const PB_GRPC_PORT: u16 = 51151;
+
+#[derive(Debug, Clone)]
+pub enum TagsEither {
+    Tags(HashSet<String>),
+    All,
+}
+
+impl From<TagsEither> for pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either {
+    fn from(value: TagsEither) -> Self {
+        match value {
+            TagsEither::Tags(tags) => {
+                pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either::Tags(
+                    pb_cheatsheet_proto::Tags {
+                        tags: tags.into_iter().collect(),
+                    },
+                )
+            }
+            TagsEither::All => pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either::All(
+                pb_cheatsheet_proto::Empty {},
+            ),
+        }
+    }
+}
+
+impl From<pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either> for TagsEither {
+    fn from(value: pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either) -> Self {
+        match value {
+            pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either::Tags(tags) => {
+                Self::Tags(tags.tags.into_iter().collect())
+            }
+            pb_cheatsheet_proto::remove_cheatsheet_tags_request::Either::All(_) => Self::All,
+        }
+    }
+}
+
+impl From<TagsEither> for pb_cheatsheet_proto::remove_wm_class_tags_request::Either {
+    fn from(value: TagsEither) -> Self {
+        match value {
+            TagsEither::Tags(tags) => {
+                pb_cheatsheet_proto::remove_wm_class_tags_request::Either::Tags(
+                    pb_cheatsheet_proto::Tags {
+                        tags: tags.into_iter().collect(),
+                    },
+                )
+            }
+            TagsEither::All => pb_cheatsheet_proto::remove_wm_class_tags_request::Either::All(
+                pb_cheatsheet_proto::Empty {},
+            ),
+        }
+    }
+}
+
+impl From<pb_cheatsheet_proto::remove_wm_class_tags_request::Either> for TagsEither {
+    fn from(value: pb_cheatsheet_proto::remove_wm_class_tags_request::Either) -> Self {
+        match value {
+            pb_cheatsheet_proto::remove_wm_class_tags_request::Either::Tags(tags) => {
+                Self::Tags(tags.tags.into_iter().collect())
+            }
+            pb_cheatsheet_proto::remove_wm_class_tags_request::Either::All(_) => Self::All,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
 pub struct FocusedWindowInfo {
