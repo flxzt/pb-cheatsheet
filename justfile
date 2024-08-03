@@ -33,7 +33,7 @@ install-host: build-host
     cargo install --profile {{cargo_profile}} --path ./crates/host
 
 run-host *ARGS: build-host
-    RUST_LOG=pb-cheatsheet-host={{rust_loglevel}} RUST_BACKTRACE={{rust_backtrace}} cargo run --profile {{cargo_profile}} -p pb-cheatsheet-host -- {{ARGS}}
+    cargo run --profile {{cargo_profile}} -p pb-cheatsheet-host -- {{ARGS}}
 
 deploy-host-service pb_grpc_addr: install-host
     #!/usr/bin/env bash
@@ -50,7 +50,7 @@ deploy-host-service pb_grpc_addr: install-host
 
     [Service]
     Environment="PB_GRPC_ADDR={{pb_grpc_addr}}"
-    Environment="RUST_LOG=pb-cheatsheet-host={{rust_loglevel}}"
+    Environment="RUST_LOG=pb_cheatsheet_host={{rust_loglevel}}"
     ExecStart=%h/.cargo/bin/pb-cheatsheet-host report-focused-window
     Restart=on-failure
     RestartSec=30
@@ -65,7 +65,7 @@ build-testclient:
     cargo build --profile {{cargo_profile}} -p pb-cheatsheet-testclient
 
 run-testclient: build-testclient
-    RUST_LOG=pb-cheatsheet-host={{rust_loglevel}} RUST_BACKTRACE={{rust_backtrace}} cargo run --profile {{cargo_profile}} -p pb-cheatsheet-testclient
+    cargo run --profile {{cargo_profile}} -p pb-cheatsheet-testclient
 
 build-pb-client:
     cargo zigbuild --target {{zigbuild_target}} --profile {{cargo_profile}} -p pb-cheatsheet-client --features={{cargo_sdk_feature}}

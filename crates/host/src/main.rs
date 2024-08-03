@@ -243,13 +243,15 @@ async fn run_report_focused_window(
                 }
             };
             if info != last_info {
-                debug!("Got focused window change:\n{info:#?}");
+                println!("Reporting focused window change:\n{info:#?}");
+                debug!("Start sending focused window change");
                 if focused_window_tx.send(info.clone()).is_err() {
                     error!("Send changed focused window info to GRPC client task, receiving side closed.");
                     quit_token_c.cancel();
                     break;
                 }
                 last_info = info;
+                debug!("Sending focused window change done");
             }
         }
     });
