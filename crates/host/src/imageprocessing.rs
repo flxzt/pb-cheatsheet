@@ -20,7 +20,7 @@ pub(crate) async fn load_prepare_image(
     rotate: Rotate,
     invert: bool,
 ) -> anyhow::Result<CheatsheetImage> {
-    let mut img = image::io::Reader::open(image)?.decode()?;
+    let mut img = image::ImageReader::open(image)?.decode()?;
     if invert {
         img.invert();
     }
