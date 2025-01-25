@@ -4,6 +4,14 @@ pb_sdk_version := "6.8"
 pb_device := "PB743G"
 gdbserver_port := "10003"
 
+# Either 'true' or 'false'
+ci := "false"
+sudo_cmd := if ci == "true" {
+    ""
+} else {
+    "sudo"
+}
+linux_distr := `lsb_release -ds | tr '[:upper:]' '[:lower:]'`
 cargo_sdk_feature := "sdk-" + replace(pb_sdk_version, ".", "-")
 rust_backtrace := "1"
 rust_loglevel := "debug"
@@ -17,6 +25,16 @@ default:
     just --list
 
 prerequisites:
+    #!/usr/bin/env bash
+    if [[ ('{{linux_distr}}' =~ 'fedora') || ('{{linux_distr}}' =~ 'centos') || ('{{linux_distr}}' =~ 'rhel') ]]; then
+        {{sudo_cmd}} dnf install -y zig protoc
+    elif [[ '{{linux_distr}}' =~ 'debian' || '{{linux_distr}}' =~ 'ubuntu' ]]; then
+        {{sudo_cmd}} apt-get update
+        {{sudo_cmd}} apt-get install -y zig protoc
+    else
+        echo "Can't install system dependencies, unsupported distro."
+        exit 1
+    fi
     rustup target add {{client_build_target}}
     cargo install cargo-zigbuild
 
@@ -35,12 +53,12 @@ install-host: build-host
 run-host *ARGS: build-host
     cargo run --profile {{cargo_profile}} -p pb-cheatsheet-host -- {{ARGS}}
 
-deploy-host-service pb_grpc_addr: install-host
+deploy-host-service pb_grpc_addr="51151": install-host
     #!/usr/bin/env bash
     set -euxo pipefail
 
     mkdir -p $HOME/.local/share/systemd/user
-    systemctl --user disable --now {{host_service_name}} | true
+    systemctl --user disable --now {{host_service_name}} || true
 
     cat << EOF > $HOME/.local/share/systemd/user/{{host_service_name}}
     [Unit]
