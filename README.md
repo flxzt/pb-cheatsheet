@@ -46,7 +46,7 @@ Install the [focused-window-dbus](https://github.com/flexagoon/focused-window-db
 Build and deploy the host service with:
 
 ```bash
-just deploy-host-service <pocketbook-ip>
+just deploy-host-service <pocketbook-grpc-address>
 ```
 
 It will create a systemd user service with name `pb-cheatsheet-host.service`.

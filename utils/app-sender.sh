@@ -1,4 +1,5 @@
 #!/bin/sh
+set -eu
 
 LOCAL_PATH=$1
 REMOTE_APP_NAME=$2
