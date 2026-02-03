@@ -3,7 +3,8 @@
 # Configurable options
 # the SDK version. Either "5.19", "6.5", "6.8"
 pb_sdk_version := "6.8"
-pb_device := "PB743G"
+# value for Pocketbook Inkpad 4
+pb_device := "6678-3C5A"
 gdbserver_port := "10003"
 
 # Either 'true' or 'false'
