@@ -99,6 +99,7 @@ build-pb-client:
         --target {{zigbuild_target}} \
         --profile {{cargo_profile}} \
         -p pb-cheatsheet-client \
+        --no-default-features \
         --features={{cargo_sdk_feature}}
 
 [doc('Transfer a built app to the device over USB.
