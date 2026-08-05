@@ -1,0 +1,18 @@
+[package]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+name = "pb-cheatsheet-com"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+tarpc = { workspace = true }
+tracing = { workspace = true }
+
+[build-dependencies]
+anyhow = { workspace = true }

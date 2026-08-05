@@ -1,0 +1,5 @@
+/target
+/tmp
+*.code-workspace
+/cheatsheets/*.pdf
+/cheatsheets/*.png

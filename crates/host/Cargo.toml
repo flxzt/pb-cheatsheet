@@ -1,0 +1,27 @@
+[package]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+name = "pb-cheatsheet-host"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+pb-cheatsheet-com = { workspace = true }
+
+anyhow = { workspace = true }
+ashpd = { workspace = true, features = ["screenshot"] }
+clap = { workspace = true, features = ["derive", "env"] }
+image = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tarpc = { workspace = true, features = ["tcp", "serde-transport-json"] }
+tokio = { workspace = true, features = [
+    "full",
+] } # TODO: only activate needed features
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { workspace = true }
+zbus = { workspace = true }
